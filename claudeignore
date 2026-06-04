@@ -1,0 +1,42 @@
+# Keep Claude Code's context lean and avoid reading bulky/sensitive content.
+
+# Data lake — large, generated, not source
+data/
+**/bronze/
+**/silver/
+**/gold/
+**/quarantine/
+**/lineage/
+
+# Frozen fixtures & generated artifacts (large; reference the harness code, not the blobs)
+harness/fixtures/
+**/*.parquet
+**/*.duckdb
+**/*.db
+
+# Reports
+**/scorecard*.html
+**/scorecard*.json
+
+# Python noise
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Lockfiles (let Claude read pyproject.toml, not the resolved lock)
+uv.lock
+poetry.lock
+
+# Secrets must never exist here, but defend anyway
+.env
+.env.*
+*.pem
+*.key
+secrets/

@@ -1,0 +1,14 @@
+# Instrument universe + per-source symbol mappings (PRD §10/§11).
+# The Reconciliation Agent uses canonical instrument_id; source agents translate.
+
+instruments:
+  - instrument_id: AAPL
+    symbols: { yfinance: AAPL,  stooq: aapl.us }
+  - instrument_id: MSFT
+    symbols: { yfinance: MSFT,  stooq: msft.us }
+  - instrument_id: NVDA
+    symbols: { yfinance: NVDA,  stooq: nvda.us }
+  - instrument_id: JPM
+    symbols: { yfinance: JPM,   stooq: jpm.us }
+  - instrument_id: SPY
+    symbols: { yfinance: SPY,   stooq: spy.us }
