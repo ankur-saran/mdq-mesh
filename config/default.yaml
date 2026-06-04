@@ -47,7 +47,7 @@ dq_rules:
   null_check:        { enabled: true,  severity: high }
   range_check:       { enabled: true,  severity: high, min: 0 }
   staleness_check:   { enabled: true,  severity: high }
-  monotonicity_check:{ enabled: true,  severity: medium }   # HIGH>=LOW etc.
+  monotonicity_check: { enabled: true, severity: medium }    # HIGH>=LOW etc.
   duplicate_check:   { enabled: true,  severity: medium }
 
 corporate_actions:
