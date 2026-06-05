@@ -91,6 +91,10 @@ class AnomalyConfig(BaseModel):
     zscore_threshold: float = 4.0
     iqr_multiplier: float = 1.5
     volatility_aware: bool = True
+    # DESIGN-NOTE: FR-A5 — two-window ratio detects regime changes without a hard
+    # price threshold, making the check instrument-agnostic (C-4 config-driven).
+    volatility_regime_window: int = 5
+    volatility_regime_ratio: float = 2.0
 
 
 class RemediationConfig(BaseModel):

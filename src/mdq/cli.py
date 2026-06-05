@@ -37,7 +37,9 @@ def run(
 
 
 async def _run_pipeline(config_path: Path, business_date: date | None = None) -> None:
+    from mdq.agents.anomaly_agent import AnomalyAgent
     from mdq.agents.contract_agent import ContractAgent
+    from mdq.agents.dq_agent import DQAgent
     from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
     from mdq.core.blackboard import Blackboard
     from mdq.core.config import load_config
@@ -68,10 +70,10 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
 
     bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)))
 
-    yfinance_agent = YFinanceAgent(bb, store, cfg)
-    contract_agent = ContractAgent(bb, store, cfg)
-    bb.register(yfinance_agent)
-    bb.register(contract_agent)
+    bb.register(YFinanceAgent(bb, store, cfg))
+    bb.register(ContractAgent(bb, store, cfg))
+    bb.register(DQAgent(bb, store, cfg))
+    bb.register(AnomalyAgent(bb, store, cfg))
 
     try:
         await bb.start()

@@ -135,7 +135,11 @@ class ContractAgent(Agent):
                 topic=TopicType.CONTRACT_PASSED,
                 agent=self.name,
                 run_id=run_id,
-                payload={"source_id": source_id, "silver_rows": len(silver_df)},
+                payload={
+                    "source_id": source_id,
+                    "business_date": business_date.isoformat(),
+                    "silver_rows": len(silver_df),
+                },
             )
         )
 

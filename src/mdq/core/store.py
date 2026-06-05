@@ -115,6 +115,29 @@ class MedallionStore:
         """Return the expected Silver Parquet path without performing I/O."""
         return self._silver / run_id / f"{business_date.isoformat()}.parquet"
 
+    def read_silver_window(self, business_date: date, window_days: int) -> pd.DataFrame:
+        """Read all Silver rows for the rolling window ending on business_date (inclusive).
+
+        # DESIGN-NOTE: FR-A5 — uses pathlib rglob + pandas concat instead of DuckDB glob
+        # for Windows path portability (NFR-7). Window sizes are small (≤ 60 days × 30 rows).
+        """
+        from datetime import timedelta
+
+        cutoff = business_date - timedelta(days=window_days)
+        frames: list[pd.DataFrame] = []
+        for p in sorted(self._silver.rglob("*.parquet")):
+            df = pd.read_parquet(p)
+            if "business_date" not in df.columns:
+                continue
+            df["business_date"] = pd.to_datetime(df["business_date"])
+            mask = (df["business_date"].dt.date >= cutoff) & (
+                df["business_date"].dt.date <= business_date
+            )
+            filtered = df[mask]
+            if not filtered.empty:
+                frames.append(filtered)
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
     # ------------------------------------------------------------------
     # Silver (FR-S2)
     # ------------------------------------------------------------------

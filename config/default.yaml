@@ -60,6 +60,8 @@ anomaly:
   zscore_threshold: 4.0
   iqr_multiplier: 1.5
   volatility_aware: true          # don't quarantine real volatility-regime moves
+  volatility_regime_window: 5     # days for "recent" vol computation
+  volatility_regime_ratio: 2.0    # recent_std / long_std ratio to flag a regime
 
 remediation:
   max_retries: 3

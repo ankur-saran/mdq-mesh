@@ -7,6 +7,7 @@ All injectors accept a deterministic *seed* argument (C-5 determinism in test ru
 from __future__ import annotations
 
 import random
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -23,6 +24,7 @@ class DefectType(StrEnum):
     SCHEMA_DRIFT = "schema_drift"
     UNADJUSTED_SPLIT = "unadjusted_split"
     CROSS_SOURCE_BREAK = "cross_source_break"
+    VOLATILITY_REGIME = "volatility_regime"
 
 
 def inject(
@@ -57,6 +59,8 @@ def inject(
             result = _unadjusted_split(result, np_rng, **params)
         case DefectType.CROSS_SOURCE_BREAK:
             result = _cross_source_break(result, **params)
+        case DefectType.VOLATILITY_REGIME:
+            result = _volatility_regime(result, np_rng, **params)
 
     return result
 
@@ -143,3 +147,96 @@ def _cross_source_break(
     if column in df.columns:
         df[column] = (df[column].astype(float) * (1.0 + shift_pct)).round(4)
     return df
+
+
+def _volatility_regime(
+    df: pd.DataFrame,
+    np_rng: np.random.Generator,
+    spike_multiplier: float = 3.0,
+    column: str = "value",
+) -> pd.DataFrame:
+    """Multiply all values by *spike_multiplier* — used on the current-day slice of
+    a history built with elevated recent volatility so the spike looks within-regime."""
+    if column in df.columns:
+        df[column] = (df[column].astype(float) * spike_multiplier).round(4)
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Multi-day Silver history builder (FR-T1 — anomaly window tests)
+# ---------------------------------------------------------------------------
+
+_SILVER_FIELDS = ["OPEN", "HIGH", "LOW", "CLOSE", "ADJ_CLOSE", "VOLUME"]
+_VOLUME_BASE = 1_000_000.0
+
+
+def build_silver_history(
+    instruments: list[str],
+    n_days: int,
+    end_date: date,
+    base_price: float = 100.0,
+    vol_multipliers: dict[int, float] | None = None,
+    source_id: str = "yfinance",
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Build synthetic multi-day Silver DataFrame for anomaly rolling-window tests (FR-T1).
+
+    Args:
+        instruments:     List of instrument_id / source_symbol strings.
+        n_days:          Number of calendar days of history to generate.
+        end_date:        Last business date included (inclusive).
+        base_price:      Starting price for the random walk.
+        vol_multipliers: Mapping of ``offset_from_end → volatility_scale``.
+                         E.g. ``{0: 5.0, 1: 4.0, 2: 3.0}`` makes the 3 most
+                         recent days 3-5× more volatile (used to set up a regime).
+        source_id:       Silver source_id label.
+        seed:            RNG seed for C-5 determinism.
+
+    Returns:
+        A Silver-schema DataFrame covering *n_days* dates ending at *end_date*.
+    """
+    np_rng = np.random.default_rng(seed)
+    vol_multipliers = vol_multipliers or {}
+    dates = [end_date - timedelta(days=i) for i in range(n_days - 1, -1, -1)]
+    fetch_ts = datetime(2024, 1, 2, 21, 0, 0, tzinfo=UTC)
+    rows: list[dict[str, object]] = []
+
+    for inst in instruments:
+        price = base_price
+        for i, d in enumerate(dates):
+            offset_from_end = n_days - 1 - i
+            vol_scale = vol_multipliers.get(offset_from_end, 1.0)
+            daily_return = np_rng.normal(0.0, 0.01 * vol_scale)
+            price = max(0.01, price * (1.0 + daily_return))
+            high = price * (1.0 + abs(np_rng.normal(0.0, 0.005 * vol_scale)))
+            low = price * (1.0 - abs(np_rng.normal(0.0, 0.005 * vol_scale)))
+            low = min(low, price)
+            high = max(high, price)
+
+            field_values: dict[str, float] = {
+                "OPEN": round(price * (1.0 + np_rng.normal(0.0, 0.002)), 4),
+                "HIGH": round(high, 4),
+                "LOW": round(low, 4),
+                "CLOSE": round(price, 4),
+                "ADJ_CLOSE": round(price, 4),
+                "VOLUME": round(_VOLUME_BASE * (1.0 + np_rng.normal(0.0, 0.1)), 0),
+            }
+            bdate = pd.Timestamp(d)
+            for field, val in field_values.items():
+                rows.append(
+                    {
+                        "instrument_id": inst,
+                        "business_date": bdate,
+                        "field": field,
+                        "value": val,
+                        "currency": "USD",
+                        "source_id": source_id,
+                        "source_symbol": inst,
+                        "fetch_ts": pd.Timestamp(fetch_ts),
+                        "event_ts": pd.Timestamp(fetch_ts),
+                        "content_hash": f"hist-{inst}-{d}-{field}",
+                        "ca_adjusted": False,
+                    }
+                )
+
+    return pd.DataFrame(rows)
