@@ -104,6 +104,18 @@ class MedallionStore:
         return self._write_parquet(df, dest)
 
     # ------------------------------------------------------------------
+    # Path helpers (read-only, no I/O)
+    # ------------------------------------------------------------------
+
+    def bronze_path(self, source_id: str, run_id: str, business_date: date) -> Path:
+        """Return the expected Bronze Parquet path without performing I/O."""
+        return self._bronze / source_id / run_id / f"{business_date.isoformat()}.parquet"
+
+    def silver_path(self, run_id: str, business_date: date) -> Path:
+        """Return the expected Silver Parquet path without performing I/O."""
+        return self._silver / run_id / f"{business_date.isoformat()}.parquet"
+
+    # ------------------------------------------------------------------
     # Silver (FR-S2)
     # ------------------------------------------------------------------
 

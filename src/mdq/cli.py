@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -25,12 +26,19 @@ def run(
         Path,
         typer.Option("--config", "-c", help="Path to YAML config file."),
     ] = Path("config/default.yaml"),
+    date_str: Annotated[
+        str | None,
+        typer.Option("--date", "-d", help="Business date YYYY-MM-DD (default: yesterday)."),
+    ] = None,
 ) -> None:
     """Run the full mdq-mesh pipeline end-to-end."""
-    asyncio.run(_run_pipeline(config))
+    business_date = date.fromisoformat(date_str) if date_str else date.today() - timedelta(days=1)
+    asyncio.run(_run_pipeline(config, business_date))
 
 
-async def _run_pipeline(config_path: Path) -> None:
+async def _run_pipeline(config_path: Path, business_date: date | None = None) -> None:
+    from mdq.agents.contract_agent import ContractAgent
+    from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
     from mdq.core.blackboard import Blackboard
     from mdq.core.config import load_config
     from mdq.core.events import Event, TopicType
@@ -40,9 +48,12 @@ async def _run_pipeline(config_path: Path) -> None:
     configure_root("INFO")
     log = get_logger("cli.run")
 
+    if business_date is None:
+        business_date = date.today() - timedelta(days=1)
+
     cfg = load_config(config_path)
     run_id = str(uuid.uuid4())
-    log.info("Starting run %s", run_id)
+    log.info("Starting run %s for %s", run_id, business_date)
 
     store = MedallionStore(
         bronze_root=Path(cfg.runtime.storage.bronze),
@@ -57,12 +68,24 @@ async def _run_pipeline(config_path: Path) -> None:
 
     bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)))
 
+    yfinance_agent = YFinanceAgent(bb, store, cfg)
+    contract_agent = ContractAgent(bb, store, cfg)
+    bb.register(yfinance_agent)
+    bb.register(contract_agent)
+
     try:
         await bb.start()
-        await bb.publish(Event(topic=TopicType.RUN_STARTED, agent="supervisor", run_id=run_id))
-        # Phase 0: skeleton only — no agents registered; pipeline boots and completes.
+        await bb.publish(
+            Event(
+                topic=TopicType.RUN_STARTED,
+                agent="supervisor",
+                run_id=run_id,
+                payload={"business_date": business_date.isoformat()},
+            )
+        )
+        await bb.drain()
         await bb.publish(Event(topic=TopicType.RUN_COMPLETE, agent="supervisor", run_id=run_id))
-        log.info("Run %s complete (Phase 0 skeleton — 0 agents active)", run_id)
+        log.info("Run %s complete", run_id)
     finally:
         await bb.stop()
         store.close()

@@ -28,7 +28,7 @@ def snapshot(source_id: str, df: pd.DataFrame, tag: str = "default") -> Path:
     dest = _FIXTURES_DIR / source_id / f"{tag}.parquet"
     dest.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df, preserve_index=False)
-    pq.write_table(table, dest)
+    pq.write_table(table, dest)  # type: ignore[no-untyped-call]
     return dest
 
 
