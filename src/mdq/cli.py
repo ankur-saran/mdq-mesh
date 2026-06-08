@@ -44,6 +44,8 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     from mdq.agents.ingestion.stooq_agent import StooqAgent
     from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
     from mdq.agents.reconciliation_agent import ReconciliationAgent
+    from mdq.agents.remediation_agent import RemediationAgent
+    from mdq.agents.supervisor import Supervisor
     from mdq.core.blackboard import Blackboard
     from mdq.core.config import load_config
     from mdq.core.events import Event, TopicType
@@ -82,6 +84,10 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     # ReconciliationAgent so back-adjustment completes before _reconcile() reads Silver.
     bb.register(CorporateActionsAgent(bb, store, cfg))
     bb.register(ReconciliationAgent(bb, store, cfg))
+    # DESIGN-NOTE: FR-A7/FR-A9 — RemediationAgent and Supervisor registered after
+    # ReconciliationAgent so they receive BREAK_DETECTED/RECONCILIATION_COMPLETE from Recon.
+    bb.register(RemediationAgent(bb, store, cfg))
+    bb.register(Supervisor(bb, store, cfg))
 
     try:
         await bb.start()

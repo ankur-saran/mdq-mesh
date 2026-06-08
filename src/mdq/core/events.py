@@ -40,6 +40,7 @@ class TopicType(StrEnum):
     BREAK_DETECTED = "reconciliation.break"
 
     # Remediation
+    REFETCH_REQUESTED = "remediation.refetch_requested"
     REMEDIATION_STARTED = "remediation.started"
     REMEDIATION_COMPLETE = "remediation.complete"
     REMEDIATION_FAILED = "remediation.failed"

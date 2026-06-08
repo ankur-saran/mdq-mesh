@@ -56,9 +56,13 @@ class StooqAgent(Agent):
 
     @property
     def subscriptions(self) -> list[TopicType]:
-        return [TopicType.RUN_STARTED]
+        return [TopicType.RUN_STARTED, TopicType.REFETCH_REQUESTED]
 
     async def act(self, event: Event) -> None:
+        if event.topic == TopicType.REFETCH_REQUESTED:
+            await self._handle_refetch(event)
+            return
+
         run_id = event.run_id
         business_date = date.fromisoformat(event.payload["business_date"])
 
@@ -91,6 +95,42 @@ class StooqAgent(Agent):
                     "source_id": _SOURCE_ID,
                     "business_date": business_date.isoformat(),
                     "row_count": len(df),
+                },
+            )
+        )
+
+    async def _handle_refetch(self, event: Event) -> None:
+        """Handle REFETCH_REQUESTED: reload data, overwrite Silver, publish DQ_PASSED (FR-A7).
+
+        # DESIGN-NOTE: FR-T2 — _load() transparently uses fixture or live, so re-fetch
+        # in tests gets clean fixture data and in production retries the live endpoint.
+        # DESIGN-NOTE: FR-H1 — DQ_PASSED is published directly (bypassing ContractAgent/
+        # DQAgent) because this is a bounded, supervised corrective action. The subsequent
+        # ReconciliationAgent._reconcile() serves as the final correctness gate.
+        """
+        if event.payload.get("source_id") != _SOURCE_ID:
+            return
+        run_id = event.run_id
+        business_date = date.fromisoformat(str(event.payload["business_date"]))
+        log.info("Re-fetching %s for %s (run=%s)", _SOURCE_ID, business_date, run_id)
+        try:
+            df = await self._load(business_date)
+        except Exception as exc:
+            log.error("Stooq re-fetch failed for %s: %s", business_date, exc)
+            return
+        from mdq.agents.contract_agent import _normalise
+
+        silver_df = _normalise(df, _SOURCE_ID, business_date)
+        self._store.write_silver(silver_df, run_id, business_date, _SOURCE_ID)
+        log.info("Silver overwritten for %s after re-fetch (%d rows)", _SOURCE_ID, len(silver_df))
+        await self._bb.publish(
+            Event(
+                topic=TopicType.DQ_PASSED,
+                agent=self.name,
+                run_id=run_id,
+                payload={
+                    "source_id": _SOURCE_ID,
+                    "business_date": business_date.isoformat(),
                 },
             )
         )
