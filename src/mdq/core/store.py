@@ -280,7 +280,10 @@ class MedallionStore:
             tmp_path = Path(tmp.name)
         try:
             pq.write_table(table, tmp_path)  # type: ignore[no-untyped-call]
-            tmp_path.rename(dest)
+            # DESIGN-NOTE: replace() overwrites atomically on both POSIX and Windows
+            # (rename() fails on Windows if the destination already exists, which
+            # happens when back-adjustment rewrites existing Silver files — FR-A4).
+            tmp_path.replace(dest)
         except Exception:
             tmp_path.unlink(missing_ok=True)
             raise

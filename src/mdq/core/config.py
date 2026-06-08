@@ -84,6 +84,9 @@ class CorporateActionsConfig(BaseModel):
     split_ratio_tolerance: float = 0.05
     dividend_drop_min_pct: float = 0.5
     require_cross_source_corroboration: bool = True
+    # DESIGN-NOTE: FR-A4 — candidate ratios are config-driven, never hard-coded (C-4).
+    candidate_split_ratios: list[float] = [2.0, 3.0, 1.5, 4.0]
+    ca_window_days: int = 30
 
 
 class AnomalyConfig(BaseModel):

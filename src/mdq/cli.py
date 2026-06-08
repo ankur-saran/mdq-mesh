@@ -39,6 +39,7 @@ def run(
 async def _run_pipeline(config_path: Path, business_date: date | None = None) -> None:
     from mdq.agents.anomaly_agent import AnomalyAgent
     from mdq.agents.contract_agent import ContractAgent
+    from mdq.agents.corporate_actions_agent import CorporateActionsAgent
     from mdq.agents.dq_agent import DQAgent
     from mdq.agents.ingestion.stooq_agent import StooqAgent
     from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
@@ -77,6 +78,9 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     bb.register(ContractAgent(bb, store, cfg))
     bb.register(DQAgent(bb, store, cfg))
     bb.register(AnomalyAgent(bb, store, cfg))
+    # DESIGN-NOTE: FR-A4 — CorporateActionsAgent MUST be registered before
+    # ReconciliationAgent so back-adjustment completes before _reconcile() reads Silver.
+    bb.register(CorporateActionsAgent(bb, store, cfg))
     bb.register(ReconciliationAgent(bb, store, cfg))
 
     try:
