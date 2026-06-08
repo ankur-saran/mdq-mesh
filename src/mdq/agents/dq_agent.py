@@ -64,7 +64,7 @@ class DQAgent(Agent):
         business_date = date.fromisoformat(event.payload["business_date"])
         run_id = event.run_id
 
-        silver_path = self._store.silver_path(run_id, business_date)
+        silver_path = self._store.silver_path(run_id, business_date, source_id)
         try:
             silver_df = pd.read_parquet(silver_path)
         except FileNotFoundError:

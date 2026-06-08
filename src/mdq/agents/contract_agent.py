@@ -122,7 +122,7 @@ class ContractAgent(Agent):
             return
 
         # Step 3 — write Silver + lineage record + CONTRACT_PASSED
-        self._store.write_silver(silver_df, run_id, business_date)
+        self._store.write_silver(silver_df, run_id, business_date, source_id)
         await self._write_decision(
             source_id,
             business_date,

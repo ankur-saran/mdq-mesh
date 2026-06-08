@@ -197,7 +197,7 @@ async def test_dq_agent_passes_clean_silver(tmp_path: Path) -> None:
     store = _make_store(tmp_path)
     cfg = _make_cfg(tmp_path)
     silver_df = _make_silver_df()
-    store.write_silver(silver_df, "test-run", _BDATE)
+    store.write_silver(silver_df, "test-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(DQAgent(bb, store, cfg))
@@ -223,7 +223,7 @@ async def test_dq_agent_null_burst_publishes_dq_failure(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     silver_df = _make_silver_df()
     silver_df.loc[0, "value"] = float("nan")
-    store.write_silver(silver_df, "test-run", _BDATE)
+    store.write_silver(silver_df, "test-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(DQAgent(bb, store, cfg))
@@ -248,7 +248,7 @@ async def test_dq_agent_high_severity_writes_quarantine(tmp_path: Path) -> None:
     cfg = _make_cfg(tmp_path)
     silver_df = _make_silver_df()
     silver_df.loc[0, "value"] = float("nan")
-    store.write_silver(silver_df, "test-run", _BDATE)
+    store.write_silver(silver_df, "test-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(DQAgent(bb, store, cfg))
@@ -267,7 +267,7 @@ async def test_dq_agent_writes_decision_record(tmp_path: Path) -> None:
     """DQAgent persists exactly one DecisionRecord per batch."""
     store = _make_store(tmp_path)
     cfg = _make_cfg(tmp_path)
-    store.write_silver(_make_silver_df(), "test-run", _BDATE)
+    store.write_silver(_make_silver_df(), "test-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(DQAgent(bb, store, cfg))

@@ -122,7 +122,7 @@ async def test_valid_bronze_produces_silver(tmp_path: Path) -> None:
     await agent.act(_ingest_event())
 
     # Silver file exists
-    silver_path = store.silver_path(_RUN_ID, _BDATE)
+    silver_path = store.silver_path(_RUN_ID, _BDATE, "yfinance")
     assert silver_path.exists(), f"Expected Silver at {silver_path}"
 
     # Silver has 5 instruments × 6 fields = 30 rows
@@ -155,7 +155,7 @@ async def test_silver_conforms_to_pandera_schema(tmp_path: Path) -> None:
     agent = ContractAgent(bb, store, cfg)
     await agent.act(_ingest_event())
 
-    silver_df = pd.read_parquet(store.silver_path(_RUN_ID, _BDATE))
+    silver_df = pd.read_parquet(store.silver_path(_RUN_ID, _BDATE, "yfinance"))
 
     try:
         SilverSchema.validate(silver_df, lazy=True)
@@ -201,7 +201,7 @@ async def test_schema_drift_quarantines_and_publishes_violation(tmp_path: Path) 
     assert payload["source_id"] == _SOURCE_ID
 
     # Silver NOT written
-    assert not store.silver_path(_RUN_ID + "-drift", _BDATE).exists()
+    assert not store.silver_path(_RUN_ID + "-drift", _BDATE, "yfinance").exists()
 
     # Quarantine IS written
     quarantine_dir = tmp_path / "quarantine" / (_RUN_ID + "-drift") / "schema_violation"

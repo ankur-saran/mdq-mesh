@@ -177,7 +177,7 @@ async def test_ac2_silver_conforms_to_silver_schema(
     assert len(bb.get_events(topic=TopicType.CONTRACT_VIOLATION)) == 0
 
     # Silver Parquet written
-    silver_path = store.silver_path("phase1-run", _BDATE)
+    silver_path = store.silver_path("phase1-run", _BDATE, "yfinance")
     assert silver_path.exists(), f"Silver not written: {silver_path}"
 
     # 5 instruments × 6 fields = 30 rows
@@ -221,7 +221,7 @@ async def test_ac3_schema_drift_detected(tmp_path: Path, monkeypatch: pytest.Mon
     assert len(bb.get_events(topic=TopicType.CONTRACT_PASSED)) == 0
 
     # Silver NOT written (quarantine instead)
-    silver_path = store.silver_path("drift-run", _BDATE)
+    silver_path = store.silver_path("drift-run", _BDATE, "yfinance")
     assert not silver_path.exists(), "Silver must NOT be written when schema drift is detected"
 
     # Quarantine IS written

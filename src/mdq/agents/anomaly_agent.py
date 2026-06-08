@@ -56,15 +56,15 @@ class AnomalyAgent(Agent):
         cfg = self._cfg.anomaly
 
         # Load current-day Silver
-        silver_path = self._store.silver_path(run_id, business_date)
+        silver_path = self._store.silver_path(run_id, business_date, source_id)
         try:
             current_df = pd.read_parquet(silver_path)
         except FileNotFoundError:
             log.error("Silver not found for anomaly check: %s", silver_path)
             return
 
-        # Load rolling history window (includes current day; we exclude it per-series below)
-        window_df = self._store.read_silver_window(business_date, cfg.zscore_window)
+        # Load rolling history window — filtered to this source so we compare like-for-like.
+        window_df = self._store.read_silver_window(business_date, cfg.zscore_window, source_id)
 
         anomalies: list[dict[str, object]] = []
 

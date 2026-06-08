@@ -146,11 +146,11 @@ async def test_ac1_null_burst_flagged_as_high_severity(
     await bb1.stop()
 
     # Corrupt the Silver: inject nulls
-    silver_path = store.silver_path("setup-run", _BDATE)
+    silver_path = store.silver_path("setup-run", _BDATE, "yfinance")
     silver_df = pd.read_parquet(silver_path)
     silver_df.loc[0, "value"] = float("nan")
     # Overwrite with corrupted Silver by writing to a new run
-    store.write_silver(silver_df, "null-run", _BDATE)
+    store.write_silver(silver_df, "null-run", _BDATE, "yfinance")
 
     # Fire DQAgent directly against the corrupted Silver
     from mdq.core.events import Event, TopicType
@@ -206,11 +206,11 @@ async def test_ac2_stale_feed_flagged_as_high_severity(
     bb1 = await _run_pipeline(store, cfg, run_id="setup-run2")
     await bb1.stop()
 
-    silver_path = store.silver_path("setup-run2", _BDATE)
+    silver_path = store.silver_path("setup-run2", _BDATE, "yfinance")
     silver_df = pd.read_parquet(silver_path)
     # Inject staleness: roll fetch_ts back 3 days
     stale_df = inject(silver_df, DefectType.STALE_FEED, days_stale=3)
-    store.write_silver(stale_df, "stale-run", _BDATE)
+    store.write_silver(stale_df, "stale-run", _BDATE, "yfinance")
 
     bb2 = Blackboard(db_path=":memory:")
     bb2.register(DQAgent(bb2, store, cfg))
@@ -258,12 +258,12 @@ async def test_ac3_negative_value_flagged_as_high_severity(
     bb1 = await _run_pipeline(store, cfg, run_id="setup-run3")
     await bb1.stop()
 
-    silver_path = store.silver_path("setup-run3", _BDATE)
+    silver_path = store.silver_path("setup-run3", _BDATE, "yfinance")
     silver_df = pd.read_parquet(silver_path)
     # Inject a negative CLOSE value (range_check min=0 must flag this)
     close_mask = (silver_df["instrument_id"] == "AAPL") & (silver_df["field"] == "CLOSE")
     silver_df.loc[close_mask, "value"] = -10.0
-    store.write_silver(silver_df, "range-run", _BDATE)
+    store.write_silver(silver_df, "range-run", _BDATE, "yfinance")
 
     bb2 = Blackboard(db_path=":memory:")
     bb2.register(DQAgent(bb2, store, cfg))
@@ -317,13 +317,13 @@ async def test_ac4_volatility_regime_spike_not_quarantined(tmp_path: Path) -> No
         seed=10,
     )
     for bdate, day_df in history_df.groupby(history_df["business_date"].dt.date):
-        store.write_silver(day_df.reset_index(drop=True), f"hist-{bdate}", bdate)  # type: ignore[arg-type]
+        store.write_silver(day_df.reset_index(drop=True), f"hist-{bdate}", bdate, "yfinance")  # type: ignore[arg-type]
 
     # Current day: 4× spike on CLOSE — large, but within a high-vol regime
     current_df = build_silver_history(instruments[:1], n_days=1, end_date=target_date, seed=11)
     close_mask = current_df["field"] == "CLOSE"
     current_df.loc[close_mask, "value"] = current_df.loc[close_mask, "value"] * 4.0
-    store.write_silver(current_df, "vol-run", target_date)
+    store.write_silver(current_df, "vol-run", target_date, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(AnomalyAgent(bb, store, cfg))

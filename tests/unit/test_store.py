@@ -59,7 +59,7 @@ def test_bronze_immutable_on_second_write(store: MedallionStore) -> None:
 
 def test_write_silver(store: MedallionStore) -> None:
     df = pd.DataFrame([{"instrument_id": "AAPL", "value": 182.55}])
-    path = store.write_silver(df, "run-001", _DATE)
+    path = store.write_silver(df, "run-001", _DATE, "yfinance")
     assert path.exists()
     loaded = pd.read_parquet(path)
     assert len(loaded) == 1

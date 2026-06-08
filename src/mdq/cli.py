@@ -40,7 +40,9 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     from mdq.agents.anomaly_agent import AnomalyAgent
     from mdq.agents.contract_agent import ContractAgent
     from mdq.agents.dq_agent import DQAgent
+    from mdq.agents.ingestion.stooq_agent import StooqAgent
     from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
+    from mdq.agents.reconciliation_agent import ReconciliationAgent
     from mdq.core.blackboard import Blackboard
     from mdq.core.config import load_config
     from mdq.core.events import Event, TopicType
@@ -71,9 +73,11 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)))
 
     bb.register(YFinanceAgent(bb, store, cfg))
+    bb.register(StooqAgent(bb, store, cfg))
     bb.register(ContractAgent(bb, store, cfg))
     bb.register(DQAgent(bb, store, cfg))
     bb.register(AnomalyAgent(bb, store, cfg))
+    bb.register(ReconciliationAgent(bb, store, cfg))
 
     try:
         await bb.start()

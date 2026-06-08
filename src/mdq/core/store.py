@@ -111,15 +111,22 @@ class MedallionStore:
         """Return the expected Bronze Parquet path without performing I/O."""
         return self._bronze / source_id / run_id / f"{business_date.isoformat()}.parquet"
 
-    def silver_path(self, run_id: str, business_date: date) -> Path:
+    def silver_path(self, run_id: str, business_date: date, source_id: str) -> Path:
         """Return the expected Silver Parquet path without performing I/O."""
-        return self._silver / run_id / f"{business_date.isoformat()}.parquet"
+        return self._silver / run_id / source_id / f"{business_date.isoformat()}.parquet"
 
-    def read_silver_window(self, business_date: date, window_days: int) -> pd.DataFrame:
+    def read_silver_window(
+        self,
+        business_date: date,
+        window_days: int,
+        source_id: str | None = None,
+    ) -> pd.DataFrame:
         """Read all Silver rows for the rolling window ending on business_date (inclusive).
 
         # DESIGN-NOTE: FR-A5 — uses pathlib rglob + pandas concat instead of DuckDB glob
         # for Windows path portability (NFR-7). Window sizes are small (≤ 60 days × 30 rows).
+        # DESIGN-NOTE: FR-A6 — source_id filter ensures AnomalyAgent compares each source
+        # against its own history only, preventing false anomalies from inter-source bias.
         """
         from datetime import timedelta
 
@@ -129,6 +136,8 @@ class MedallionStore:
             df = pd.read_parquet(p)
             if "business_date" not in df.columns:
                 continue
+            if source_id is not None and "source_id" in df.columns:
+                df = df[df["source_id"] == source_id]
             df["business_date"] = pd.to_datetime(df["business_date"])
             mask = (df["business_date"].dt.date >= cutoff) & (
                 df["business_date"].dt.date <= business_date
@@ -147,9 +156,10 @@ class MedallionStore:
         df: pd.DataFrame,
         run_id: str,
         business_date: date | None = None,
+        source_id: str = "unknown",
     ) -> Path:
         d = (business_date or date.today()).isoformat()
-        dest = self._silver / run_id / f"{d}.parquet"
+        dest = self._silver / run_id / source_id / f"{d}.parquet"
         return self._write_parquet(df, dest)
 
     # ------------------------------------------------------------------

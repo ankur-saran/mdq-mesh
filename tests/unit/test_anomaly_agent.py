@@ -60,7 +60,7 @@ def _write_history(store: MedallionStore, history_df: pd.DataFrame, end_date: da
     """Write each day of history_df as a separate Silver file."""
     for bdate, day_df in history_df.groupby(history_df["business_date"].dt.date):
         run_id = f"hist-{bdate.isoformat()}"
-        store.write_silver(day_df.reset_index(drop=True), run_id, bdate)  # type: ignore[arg-type]
+        store.write_silver(day_df.reset_index(drop=True), run_id, bdate, "yfinance")  # type: ignore[arg-type]
 
 
 def _contract_passed_event(run_id: str, business_date: date = _BDATE) -> Event:
@@ -95,7 +95,7 @@ async def test_anomaly_agent_detects_large_spike(tmp_path: Path) -> None:
     current_df = build_silver_history(_INSTRUMENTS, n_days=1, end_date=_BDATE, seed=99)
     close_mask = current_df["field"] == "CLOSE"
     current_df.loc[close_mask, "value"] = current_df.loc[close_mask, "value"] * 100.0
-    store.write_silver(current_df, "spike-run", _BDATE)
+    store.write_silver(current_df, "spike-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(AnomalyAgent(bb, store, cfg))
@@ -132,7 +132,7 @@ async def test_anomaly_agent_volatility_regime_not_error(tmp_path: Path) -> None
     current_df = build_silver_history(_INSTRUMENTS, n_days=1, end_date=_BDATE, seed=77)
     close_mask = current_df["field"] == "CLOSE"
     current_df.loc[close_mask, "value"] = current_df.loc[close_mask, "value"] * 3.0
-    store.write_silver(current_df, "regime-run", _BDATE)
+    store.write_silver(current_df, "regime-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(AnomalyAgent(bb, store, cfg))
@@ -163,7 +163,7 @@ async def test_anomaly_agent_clean_data_no_event(tmp_path: Path) -> None:
     _write_history(store, history_df, end_hist)
 
     current_df = build_silver_history(_INSTRUMENTS, n_days=1, end_date=_BDATE, seed=4)
-    store.write_silver(current_df, "clean-run", _BDATE)
+    store.write_silver(current_df, "clean-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(AnomalyAgent(bb, store, cfg))
@@ -187,7 +187,7 @@ async def test_anomaly_agent_writes_decision_record(tmp_path: Path) -> None:
     _write_history(store, history_df, end_hist)
 
     current_df = build_silver_history(_INSTRUMENTS, n_days=1, end_date=_BDATE, seed=6)
-    store.write_silver(current_df, "dec-run", _BDATE)
+    store.write_silver(current_df, "dec-run", _BDATE, "yfinance")
 
     bb = Blackboard(db_path=":memory:")
     bb.register(AnomalyAgent(bb, store, cfg))
