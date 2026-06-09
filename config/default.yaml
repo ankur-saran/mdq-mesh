@@ -75,3 +75,6 @@ narrator:
   enabled: false                  # optional, edge-only (C-6). Off by default.
   host: "http://localhost:11434"
   model: "llama3.1:8b"
+
+scorecard:
+  output_formats: [json, html]

@@ -189,11 +189,12 @@ async def test_ac1_agreement_produces_high_confidence_gold(
         assert "yfinance" in sources, f"yfinance missing from quorum: {sources}"
         assert "stooq" in sources, f"stooq missing from quorum: {sources}"
 
-    # DecisionRecord persisted
+    # DecisionRecord persisted (one per elected GoldenRecord — FR-A8 design change)
     decisions = store.query(
         "SELECT * FROM decisions WHERE agent = 'reconciliation' AND decision_type = 'RECONCILE'"
     )
-    assert len(decisions) == 1, "Expected exactly one RECONCILE DecisionRecord"
+    assert len(decisions) >= 1, "Expected at least one RECONCILE DecisionRecord"
+    assert len(decisions) == len(gold_df), "One RECONCILE decision per GoldenRecord (FK linkage)"
 
     await bb.stop()
     store.close()
@@ -245,9 +246,9 @@ async def test_ac2_disagreement_produces_break_with_dissent(
         quarantine_root.glob("*.parquet")
     ), "Quarantine must be written for reconciliation breaks"
 
-    # DecisionRecord persisted with break info
+    # DecisionRecord persisted for each elected GoldenRecord (non-breaking fields only)
     decisions = store.query("SELECT * FROM decisions WHERE agent = 'reconciliation'")
-    assert len(decisions) == 1
+    assert len(decisions) >= 1, "At least some reconciliation decisions must be written"
 
     await bb.stop()
     store.close()

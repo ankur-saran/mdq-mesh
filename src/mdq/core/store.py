@@ -17,7 +17,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from mdq.core.schemas import DecisionRecord, GoldenRecord
+from mdq.core.schemas import DecisionRecord, GoldenRecord, ScorecardRecord
 from mdq.utils.logging import get_logger
 
 log = get_logger("store")
@@ -34,6 +34,23 @@ CREATE TABLE IF NOT EXISTS decisions (
     outcome       TEXT NOT NULL,
     rule_applied  TEXT NOT NULL,
     verified      BOOLEAN NOT NULL
+)
+"""
+
+_CREATE_SCORECARD_TABLE = """
+CREATE TABLE IF NOT EXISTS scorecard (
+    run_id                     TEXT    NOT NULL,
+    business_date              DATE    NOT NULL,
+    source_id                  TEXT    NOT NULL,
+    records_ingested           INTEGER NOT NULL DEFAULT 0,
+    dq_failures_by_rule        TEXT    NOT NULL DEFAULT '{}',
+    breaks_detected            INTEGER NOT NULL DEFAULT 0,
+    remediations_attempted     INTEGER NOT NULL DEFAULT 0,
+    remediations_succeeded     INTEGER NOT NULL DEFAULT 0,
+    escalations                INTEGER NOT NULL DEFAULT 0,
+    corporate_actions_detected INTEGER NOT NULL DEFAULT 0,
+    overall_status             TEXT    NOT NULL DEFAULT 'GREEN',
+    PRIMARY KEY (run_id, source_id)
 )
 """
 
@@ -63,9 +80,10 @@ class MedallionStore:
     # ------------------------------------------------------------------
 
     def open(self) -> None:
-        """Open the DuckDB lineage connection and create the decisions table."""
+        """Open the DuckDB lineage connection and create the decisions and scorecard tables."""
         self._conn = duckdb.connect(str(self._duckdb_path))
         self._conn.execute(_CREATE_DECISIONS_TABLE)
+        self._conn.execute(_CREATE_SCORECARD_TABLE)
 
     def close(self) -> None:
         if self._conn is not None:
@@ -256,6 +274,95 @@ class MedallionStore:
             "verified",
         ]
         return dict(zip(cols, row, strict=True))
+
+    def read_gold(self, run_id: str, business_date: date) -> pd.DataFrame:
+        """Read Gold Parquet for a run. Returns empty DataFrame if the file is not found."""
+        path = self._gold / run_id / f"{business_date.isoformat()}.parquet"
+        if not path.exists():
+            return pd.DataFrame()
+        return pd.read_parquet(path)
+
+    def write_scorecard(self, record: ScorecardRecord) -> None:
+        """Persist a scorecard record to DuckDB (upsert on run_id, source_id)."""
+        conn = self._require_conn()
+        conn.execute(
+            """
+            INSERT INTO scorecard
+                (run_id, business_date, source_id, records_ingested,
+                 dq_failures_by_rule, breaks_detected, remediations_attempted,
+                 remediations_succeeded, escalations, corporate_actions_detected,
+                 overall_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (run_id, source_id) DO UPDATE SET
+                business_date              = excluded.business_date,
+                records_ingested           = excluded.records_ingested,
+                dq_failures_by_rule        = excluded.dq_failures_by_rule,
+                breaks_detected            = excluded.breaks_detected,
+                remediations_attempted     = excluded.remediations_attempted,
+                remediations_succeeded     = excluded.remediations_succeeded,
+                escalations                = excluded.escalations,
+                corporate_actions_detected = excluded.corporate_actions_detected,
+                overall_status             = excluded.overall_status
+            """,
+            [
+                record.run_id,
+                record.business_date.isoformat(),
+                record.source_id,
+                record.records_ingested,
+                json.dumps(record.dq_failures_by_rule),
+                record.breaks_detected,
+                record.remediations_attempted,
+                record.remediations_succeeded,
+                record.escalations,
+                record.corporate_actions_detected,
+                record.overall_status.value,
+            ],
+        )
+
+    def read_scorecard(self, run_id: str) -> list[ScorecardRecord]:
+        """Read all scorecard records for a run_id."""
+        conn = self._require_conn()
+        rows = conn.execute(
+            "SELECT * FROM scorecard WHERE run_id = ? ORDER BY source_id", [run_id]
+        ).fetchall()
+        cols = [
+            "run_id",
+            "business_date",
+            "source_id",
+            "records_ingested",
+            "dq_failures_by_rule",
+            "breaks_detected",
+            "remediations_attempted",
+            "remediations_succeeded",
+            "escalations",
+            "corporate_actions_detected",
+            "overall_status",
+        ]
+        result: list[ScorecardRecord] = []
+        for row in rows:
+            d = dict(zip(cols, row, strict=True))
+            d["dq_failures_by_rule"] = json.loads(str(d["dq_failures_by_rule"]))
+            result.append(ScorecardRecord.model_validate(d))
+        return result
+
+    def read_silver_for_replay(self, run_id: str) -> dict[str, pd.DataFrame]:
+        """Return {source_id: DataFrame} for all Silver files belonging to run_id.
+
+        # DESIGN-NOTE: KPI-6 — used exclusively by the replay command. Reads the
+        # frozen Silver Parquet written during the original run so the pipeline can
+        # be re-executed deterministically against identical inputs (C-4, C-5).
+        """
+        run_dir = self._silver / run_id
+        if not run_dir.exists():
+            return {}
+        result: dict[str, pd.DataFrame] = {}
+        for source_dir in sorted(run_dir.iterdir()):
+            if not source_dir.is_dir():
+                continue
+            parquet_files = sorted(source_dir.glob("*.parquet"))
+            if parquet_files:
+                result[source_dir.name] = pd.read_parquet(parquet_files[-1])
+        return result
 
     # ------------------------------------------------------------------
     # Generic DuckDB query (for replay and audit — FR-O3, KPI-6)

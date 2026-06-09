@@ -113,6 +113,10 @@ class NarratorConfig(BaseModel):
     model: str = "llama3.1:8b"
 
 
+class ScorecardConfig(BaseModel):
+    output_formats: list[str] = ["json", "html"]
+
+
 class InstrumentConfig(BaseModel):
     instrument_id: str
     symbols: dict[str, str]
@@ -131,6 +135,7 @@ class Config(BaseModel):
     anomaly: AnomalyConfig = AnomalyConfig()
     remediation: RemediationConfig = RemediationConfig()
     narrator: NarratorConfig = NarratorConfig()
+    scorecard: ScorecardConfig = ScorecardConfig()
     universe: UniverseConfig = UniverseConfig()
 
 

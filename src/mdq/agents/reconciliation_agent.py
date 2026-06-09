@@ -177,6 +177,30 @@ class ReconciliationAgent(Agent):
                     confidence=confidence,
                 )
                 golden_records.append(gold_rec)
+                # DESIGN-NOTE: FR-A8 / C-4 — one DecisionRecord per GoldenRecord so that
+                # every Gold value has a traceable FK (Gold.decision_id → decisions.decision_id)
+                # with the source values used to elect it stored in `inputs`.
+                decision_rec = DecisionRecord(
+                    decision_id=gold_rec.decision_id,
+                    agent=self.name,
+                    instrument_id=instrument_id,
+                    business_date=business_date,
+                    decision_type=DecisionType.RECONCILE,
+                    inputs={
+                        "field": field,
+                        "source_values": {src: round(v, 6) for src, v in source_values.items()},
+                        "quorum_sources": sorted(quorum_srcs),
+                        "dissenting_sources": sorted(dissenting_srcs),
+                        "tolerance_band": tol_band,
+                    },
+                    outcome={
+                        "golden_value": str(round(golden_val, 6)),
+                        "confidence": confidence.value,
+                    },
+                    rule_applied="quorum_tolerance",
+                    verified=True,
+                )
+                self._store.write_decision(decision_rec)
 
         # Write quarantine for breaks
         if breaks:
@@ -198,36 +222,14 @@ class ReconciliationAgent(Agent):
             self._store.write_quarantine(break_df, "reconciliation_break", run_id, business_date)
 
         # Write Gold (only if any records elected)
-        gold_path: str | None = None
         if golden_records:
-            gold_path = str(self._store.write_gold(golden_records, run_id, business_date))
+            self._store.write_gold(golden_records, run_id, business_date)
             log.info(
                 "Gold written: %d records, %d breaks (run=%s)",
                 len(golden_records),
                 len(breaks),
                 run_id,
             )
-
-        # One DecisionRecord per reconciliation batch (C-4)
-        record = DecisionRecord(
-            agent=self.name,
-            instrument_id="batch",
-            business_date=business_date,
-            decision_type=DecisionType.RECONCILE,
-            inputs={
-                "run_id": run_id,
-                "passing_sources": passing_sources,
-                "excluded_sources": [s for s, p in completed.items() if not p],
-            },
-            outcome={
-                "status": "break" if (len(breaks) > 0 and not golden_records) else "elected",
-                "golden_records": len(golden_records),
-                "breaks": len(breaks),
-                "gold_path": gold_path,
-            },
-            rule_applied="quorum_tolerance",
-        )
-        self._store.write_decision(record)
 
         # Publish BREAK_DETECTED events (one per break)
         for brk in breaks:
