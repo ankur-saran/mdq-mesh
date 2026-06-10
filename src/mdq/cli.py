@@ -41,6 +41,8 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     from mdq.agents.contract_agent import ContractAgent
     from mdq.agents.corporate_actions_agent import CorporateActionsAgent
     from mdq.agents.dq_agent import DQAgent
+    from mdq.agents.ingestion.ecb_agent import ECBAgent
+    from mdq.agents.ingestion.sec_edgar_agent import SECEdgarAgent
     from mdq.agents.ingestion.stooq_agent import StooqAgent
     from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
     from mdq.agents.lineage_agent import LineageAgent
@@ -78,6 +80,12 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
 
     bb.register(YFinanceAgent(bb, store, cfg))
     bb.register(StooqAgent(bb, store, cfg))
+    # DESIGN-NOTE: KPI-7 — reference-data agents registered conditionally from config;
+    # they publish REFERENCE_DATA_COMPLETE and never interact with the price pipeline.
+    if cfg.sources.ecb.enabled:
+        bb.register(ECBAgent(bb, store, cfg))
+    if cfg.sources.sec_edgar.enabled:
+        bb.register(SECEdgarAgent(bb, store, cfg))
     bb.register(ContractAgent(bb, store, cfg))
     bb.register(DQAgent(bb, store, cfg))
     bb.register(AnomalyAgent(bb, store, cfg))

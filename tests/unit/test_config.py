@@ -13,16 +13,18 @@ def test_load_default_config() -> None:
     assert cfg.runtime.transport == "asyncio"
     assert cfg.runtime.parallelism == 4
     assert cfg.sources.yfinance.enabled is True
-    assert cfg.sources.ecb.enabled is False
+    assert cfg.sources.ecb.enabled is True  # enabled in Phase 7
     assert cfg.narrator.enabled is False
 
 
 def test_universe_loaded() -> None:
     cfg = load_config("config/default.yaml", "config/universe.yaml")
-    assert len(cfg.universe.instruments) == 5
+    assert len(cfg.universe.instruments) == 7  # 5 equities + 2 ECB FX pairs (Phase 7)
     ids = [i.instrument_id for i in cfg.universe.instruments]
     assert "AAPL" in ids
     assert "SPY" in ids
+    assert "EUR/USD" in ids
+    assert "EUR/GBP" in ids
 
 
 def test_instrument_symbol_mappings() -> None:

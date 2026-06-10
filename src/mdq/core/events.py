@@ -51,6 +51,9 @@ class TopicType(StrEnum):
     # Lineage
     DECISION_RECORDED = "lineage.decision"
 
+    # Reference data (ECB, SEC EDGAR) — bypasses price reconciliation pipeline (Phase 7)
+    REFERENCE_DATA_COMPLETE = "reference_data.complete"
+
 
 class Event(BaseModel):
     """An immutable blackboard event. All agents read and write these.

@@ -24,11 +24,13 @@ sources:
     backoff_seconds: 2
     staleness_max_days: 1
   ecb:
-    enabled: false            # turn on in Phase 7
+    enabled: true             # Phase 7: ECB SDMX FX reference rates (keyless — C-1)
     retries: 3
     backoff_seconds: 2
   sec_edgar:
-    enabled: false            # turn on in Phase 7
+    enabled: true             # Phase 7: SEC EDGAR shares outstanding (keyless — C-1)
+    retries: 2
+    backoff_seconds: 3
     user_agent: "mdq-mesh research contact@example.com"   # required by SEC fair-access; NOT a key
 
 reconciliation:

@@ -1,14 +1,20 @@
 # Instrument universe + per-source symbol mappings (PRD §10/§11).
 # The Reconciliation Agent uses canonical instrument_id; source agents translate.
+# Phase 7: added sec_edgar CIK mappings for equity instruments; added ECB FX pairs.
 
 instruments:
   - instrument_id: AAPL
-    symbols: { yfinance: AAPL,  stooq: aapl.us }
+    symbols: { yfinance: AAPL, stooq: aapl.us, sec_edgar: "0000320193" }
   - instrument_id: MSFT
-    symbols: { yfinance: MSFT,  stooq: msft.us }
+    symbols: { yfinance: MSFT, stooq: msft.us, sec_edgar: "0000789019" }
   - instrument_id: NVDA
-    symbols: { yfinance: NVDA,  stooq: nvda.us }
+    symbols: { yfinance: NVDA, stooq: nvda.us, sec_edgar: "0001045810" }
   - instrument_id: JPM
-    symbols: { yfinance: JPM,   stooq: jpm.us }
+    symbols: { yfinance: JPM,  stooq: jpm.us,  sec_edgar: "0000019617" }
   - instrument_id: SPY
-    symbols: { yfinance: SPY,   stooq: spy.us }
+    symbols: { yfinance: SPY,  stooq: spy.us }   # ETF — no relevant EDGAR company-facts
+  # ECB FX pairs: instrument_id is the pair; ecb symbol is the target-currency ISO code
+  - instrument_id: EUR/USD
+    symbols: { ecb: USD }
+  - instrument_id: EUR/GBP
+    symbols: { ecb: GBP }

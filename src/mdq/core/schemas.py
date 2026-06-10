@@ -28,6 +28,7 @@ class FieldType(StrEnum):
     CLOSE = "CLOSE"
     ADJ_CLOSE = "ADJ_CLOSE"
     VOLUME = "VOLUME"
+    SHARES = "SHARES"  # SEC EDGAR shares outstanding (Phase 7)
 
 
 class Confidence(StrEnum):
