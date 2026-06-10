@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 
 from mdq.core.events import Event, TopicType
+from mdq.core.transport.base import Transport
 from mdq.core.transport.inprocess import InProcessTransport
 from mdq.utils.logging import get_logger
 
@@ -38,7 +39,7 @@ class Blackboard:
     def __init__(
         self,
         db_path: str,
-        transport: InProcessTransport | None = None,
+        transport: Transport | None = None,
     ) -> None:
         self._db_path = db_path
         self._transport = transport or InProcessTransport()

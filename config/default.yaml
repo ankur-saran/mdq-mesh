@@ -2,7 +2,11 @@
 # No secrets, no keys — by design (C-1).
 
 runtime:
-  transport: asyncio          # asyncio | redpanda  (redpanda is optional, Phase 8)
+  transport: asyncio          # asyncio | redpanda  (redpanda requires Docker — C-3 optional)
+  redpanda:                   # Phase 8: optional Redpanda/Kafka transport
+    bootstrap_servers: "localhost:9092"
+    topic_prefix: "mdq"
+    consumer_group: "mdq-mesh"
   parallelism: 4
   storage:
     bronze: data/bronze

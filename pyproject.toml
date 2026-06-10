@@ -28,11 +28,14 @@ dev = [
     "ruff>=0.4",
     "black>=24.0",
     "mypy>=1.10",
+    "aiokafka>=0.9",           # Phase 8: needed for transport tests
 ]
 # Optional statistical helper (anomaly detection still works without it)
 ml = ["scikit-learn>=1.4"]
 # Optional local LLM narration (edge-only; system runs identically without it)
 narrator = ["ollama>=0.2"]
+# Optional Redpanda/Kafka transport (requires Docker — C-3)
+redpanda = ["aiokafka>=0.9"]
 
 [project.scripts]
 mdq = "mdq.cli:app"
@@ -60,6 +63,11 @@ python_version = "3.11"
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# aiokafka ships without py.typed stubs; ignore missing imports on the optional dep
+module = "aiokafka.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

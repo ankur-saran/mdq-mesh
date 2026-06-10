@@ -27,8 +27,17 @@ class StoragePaths(BaseModel):
     lineage: str = "data/lineage"
 
 
+class RedpandaConfig(BaseModel):
+    bootstrap_servers: str = "localhost:9092"
+    topic_prefix: str = "mdq"
+    consumer_group: str = "mdq-mesh"
+
+
 class RuntimeConfig(BaseModel):
     transport: str = "asyncio"
+    # DESIGN-NOTE: FR-B3 — redpanda sub-config used only when transport == "redpanda".
+    # Kept inside RuntimeConfig so the YAML path is runtime.redpanda.* (PRD §11).
+    redpanda: RedpandaConfig = RedpandaConfig()
     parallelism: int = 4
     storage: StoragePaths = StoragePaths()
     duckdb_path: str = "data/mdq.duckdb"

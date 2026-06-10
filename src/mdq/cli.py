@@ -76,7 +76,25 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     store.init_dirs()
     store.open()
 
-    bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)))
+    from mdq.core.transport.base import Transport
+    from mdq.core.transport.inprocess import InProcessTransport
+
+    _transport: Transport
+    if cfg.runtime.transport == "redpanda":
+        # DESIGN-NOTE: FR-B3 / C-3 — RedpandaTransport is lazily imported so it
+        # never appears on the pure-local code path when transport == "asyncio".
+        from mdq.core.transport.redpanda import RedpandaTransport
+
+        _transport = RedpandaTransport(
+            bootstrap_servers=cfg.runtime.redpanda.bootstrap_servers,
+            topic_prefix=cfg.runtime.redpanda.topic_prefix,
+            consumer_group=cfg.runtime.redpanda.consumer_group,
+        )
+        log.info("Using Redpanda transport (%s)", cfg.runtime.redpanda.bootstrap_servers)
+    else:
+        _transport = InProcessTransport()
+
+    bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)), transport=_transport)
 
     bb.register(YFinanceAgent(bb, store, cfg))
     bb.register(StooqAgent(bb, store, cfg))
@@ -101,6 +119,13 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
     # after Supervisor clears its per-run state (ordering is cosmetic here since they
     # are independent subscribers, but last = semantically "after all run work is done").
     bb.register(LineageAgent(bb, store, cfg))
+    # DESIGN-NOTE: FR-A10 / C-2 — NarratorAgent is optional, edge-only, and NEVER
+    # influences data decisions. Registered last so RUN_COMPLETE arrives after all
+    # pipeline work is done. Disabled by default (cfg.narrator.enabled = False).
+    if cfg.narrator.enabled:
+        from mdq.agents.narrator_agent import NarratorAgent
+
+        bb.register(NarratorAgent(bb, store, cfg))
 
     try:
         await bb.start()
