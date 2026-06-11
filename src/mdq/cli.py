@@ -397,7 +397,7 @@ def inject(
     scenario: Annotated[
         str | None,
         typer.Argument(
-            help="Defect scenario: null_burst | stale_feed | out_of_range | schema_drift | "
+            help="Defect scenario: clean | null_burst | stale_feed | out_of_range | schema_drift | "
             "split_2to1 | cross_source_break | volatility_regime | mixed_defects"
         ),
     ] = None,
@@ -423,7 +423,7 @@ def inject(
     else:
         typer.echo(
             "Provide a scenario name or --freeze-fixtures.\n"
-            "Scenarios: null_burst | stale_feed | out_of_range | schema_drift | "
+            "Scenarios: clean | null_burst | stale_feed | out_of_range | schema_drift | "
             "split_2to1 | cross_source_break | volatility_regime | mixed_defects",
             err=True,
         )
@@ -455,10 +455,10 @@ async def _inject_scenario(config_path: Path, scenario: str, business_date: date
     configure_root("INFO")
     log = get_logger("cli.inject")
 
-    if scenario not in _BRONZE_SCENARIOS and scenario != "mixed_defects":
+    _VALID = sorted(list(_BRONZE_SCENARIOS) + ["clean", "mixed_defects"])
+    if scenario not in _VALID:
         typer.echo(
-            f"[ERROR] Unknown scenario {scenario!r}. "
-            f"Valid: {sorted(list(_BRONZE_SCENARIOS) + ['mixed_defects'])}",
+            f"[ERROR] Unknown scenario {scenario!r}. Valid: {_VALID}",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -475,7 +475,9 @@ async def _inject_scenario(config_path: Path, scenario: str, business_date: date
             base_df = _synthetic_bronze(source_id, cfg, business_date)
             log.info("Generated synthetic Bronze for %s (%d rows)", source_id, len(base_df))
 
-        if scenario == "mixed_defects":
+        if scenario == "clean":
+            df = base_df
+        elif scenario == "mixed_defects":
             df = harness_inject(base_df, "null_burst", seed=42, column="Close", rate=0.2)
             df = harness_inject(df, "out_of_range", seed=7, column="Close")
         else:
