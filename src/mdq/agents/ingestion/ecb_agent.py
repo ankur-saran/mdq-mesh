@@ -77,6 +77,36 @@ class ECBAgent(Agent):
 
         try:
             df = await self._load(business_date)
+        except FileNotFoundError as exc:
+            if self._cfg.runtime.use_fixtures:
+                log.warning("ECB: no fixture found — skipping (use_fixtures=True): %s", exc)
+                await self._bb.publish(
+                    Event(
+                        topic=TopicType.REFERENCE_DATA_COMPLETE,
+                        agent=self.name,
+                        run_id=run_id,
+                        payload={
+                            "source_id": _SOURCE_ID,
+                            "business_date": business_date.isoformat(),
+                            "row_count": 0,
+                        },
+                    )
+                )
+                return
+            log.error("ECB ingestion failed for %s: %s", business_date, exc)
+            await self._bb.publish(
+                Event(
+                    topic=TopicType.INGESTION_FAILED,
+                    agent=self.name,
+                    run_id=run_id,
+                    payload={
+                        "source_id": _SOURCE_ID,
+                        "business_date": business_date.isoformat(),
+                        "error": str(exc),
+                    },
+                )
+            )
+            return
         except Exception as exc:
             log.error("ECB ingestion failed for %s: %s", business_date, exc)
             await self._bb.publish(

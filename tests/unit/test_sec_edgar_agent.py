@@ -287,11 +287,14 @@ async def test_missing_fixture_publishes_ingestion_failed(
         )
     )
 
+    # In fixtures mode a missing fixture is a graceful skip, not a hard failure
     failed = bb.get_events(topic=TopicType.INGESTION_FAILED)
-    assert len(failed) == 1
-    payload = json.loads(failed[0]["payload"])
+    assert len(failed) == 0
+    completed = bb.get_events(topic=TopicType.REFERENCE_DATA_COMPLETE)
+    assert len(completed) == 1
+    payload = json.loads(completed[0]["payload"])
     assert payload["source_id"] == "sec_edgar"
-    assert "error" in payload
+    assert payload["row_count"] == 0
     assert not store.bronze_path("sec_edgar", "sec-run-fail", _BDATE).exists()
 
     store.close()

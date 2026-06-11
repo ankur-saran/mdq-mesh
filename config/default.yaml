@@ -2,6 +2,7 @@
 # No secrets, no keys — by design (C-1).
 
 runtime:
+  use_fixtures: true          # set false to fetch live; true loads harness/fixtures/ (FR-T2)
   transport: asyncio          # asyncio | redpanda  (redpanda requires Docker — C-3 optional)
   redpanda:                   # Phase 8: optional Redpanda/Kafka transport
     bootstrap_servers: "localhost:9092"

@@ -159,14 +159,85 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
 
 @app.command(name="run-agent")
 def run_agent(
-    name: Annotated[str, typer.Argument(help="Agent name to run in isolation.")],
+    name: Annotated[str, typer.Argument(help="Agent name (yfinance | stooq | ecb | sec_edgar).")],
     config: Annotated[
         Path,
         typer.Option("--config", "-c", help="Path to YAML config file."),
     ] = Path("config/default.yaml"),
+    date_str: Annotated[
+        str | None,
+        typer.Option("--date", "-d", help="Business date YYYY-MM-DD (default: yesterday)."),
+    ] = None,
 ) -> None:
-    """Run a single named agent in isolation (implemented per agent in Phase 1+)."""
-    typer.echo(f"[Phase 0] run-agent {name!r} — no agents implemented yet.")
+    """Run a single ingestion agent in isolation and write its Bronze output."""
+    _INGESTION_AGENTS = {"yfinance", "stooq", "ecb", "sec_edgar"}
+    if name not in _INGESTION_AGENTS:
+        typer.echo(
+            f"[ERROR] run-agent supports ingestion agents only: {sorted(_INGESTION_AGENTS)}.\n"
+            f"Downstream agents require upstream data — use `python -m mdq run` instead.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    business_date = date.fromisoformat(date_str) if date_str else date.today() - timedelta(days=1)
+    asyncio.run(_run_single_agent(config, name, business_date))
+
+
+async def _run_single_agent(config_path: Path, agent_name: str, business_date: date) -> None:
+    from mdq.core.blackboard import Blackboard
+    from mdq.core.config import load_config
+    from mdq.core.events import Event, TopicType
+    from mdq.core.store import MedallionStore
+    from mdq.core.transport.inprocess import InProcessTransport
+    from mdq.utils.logging import configure_root, get_logger
+
+    configure_root("INFO")
+    log = get_logger("cli.run-agent")
+
+    cfg = load_config(config_path)
+    run_id = str(uuid.uuid4())
+    log.info("run-agent %r: run=%s date=%s", agent_name, run_id, business_date)
+
+    store = MedallionStore(
+        bronze_root=Path(cfg.runtime.storage.bronze),
+        silver_root=Path(cfg.runtime.storage.silver),
+        gold_root=Path(cfg.runtime.storage.gold),
+        quarantine_root=Path(cfg.runtime.storage.quarantine),
+        lineage_root=Path(cfg.runtime.storage.lineage),
+        duckdb_path=Path(cfg.runtime.duckdb_path),
+    )
+    store.init_dirs()
+    store.open()
+
+    bb = Blackboard(db_path=str(Path(cfg.runtime.duckdb_path)), transport=InProcessTransport())
+
+    if agent_name == "yfinance":
+        from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
+        bb.register(YFinanceAgent(bb=bb, store=store, cfg=cfg))
+    elif agent_name == "stooq":
+        from mdq.agents.ingestion.stooq_agent import StooqAgent
+        bb.register(StooqAgent(bb=bb, store=store, cfg=cfg))
+    elif agent_name == "ecb":
+        from mdq.agents.ingestion.ecb_agent import ECBAgent
+        bb.register(ECBAgent(bb=bb, store=store, cfg=cfg))
+    else:
+        from mdq.agents.ingestion.sec_edgar_agent import SECEdgarAgent
+        bb.register(SECEdgarAgent(bb=bb, store=store, cfg=cfg))
+
+    try:
+        await bb.start()
+        await bb.publish(
+            Event(
+                topic=TopicType.RUN_STARTED,
+                agent="cli",
+                run_id=run_id,
+                payload={"business_date": business_date.isoformat()},
+            )
+        )
+        await bb.drain()
+        log.info("run-agent %r complete (run=%s)", agent_name, run_id)
+    finally:
+        await bb.stop()
+        store.close()
 
 
 @app.command()
@@ -323,11 +394,182 @@ async def _replay_run(config_path: Path, run_id: str) -> bool:
 
 @app.command()
 def inject(
-    scenario: Annotated[str, typer.Argument(help="Defect scenario name (FR-T1).")],
+    scenario: Annotated[
+        str | None,
+        typer.Argument(
+            help="Defect scenario: null_burst | stale_feed | out_of_range | schema_drift | "
+            "split_2to1 | cross_source_break | volatility_regime | mixed_defects"
+        ),
+    ] = None,
     config: Annotated[
         Path,
         typer.Option("--config", "-c", help="Path to YAML config file."),
     ] = Path("config/default.yaml"),
+    freeze_fixtures: Annotated[
+        bool,
+        typer.Option("--freeze-fixtures", help="Snapshot live data as clean base fixtures (FR-T2)."),
+    ] = False,
+    date_str: Annotated[
+        str | None,
+        typer.Option("--date", "-d", help="Business date YYYY-MM-DD (default: yesterday)."),
+    ] = None,
 ) -> None:
-    """Inject a named test-defect scenario into the harness fixtures (FR-T1)."""
-    typer.echo(f"[Phase 0] inject {scenario!r} — full defect injection wired in Phase 1+.")
+    """Inject a named defect into harness fixtures, or snapshot live data as fixtures (FR-T1/FR-T2)."""
+    business_date = date.fromisoformat(date_str) if date_str else date.today() - timedelta(days=1)
+    if freeze_fixtures:
+        asyncio.run(_freeze_fixtures(config, business_date))
+    elif scenario:
+        asyncio.run(_inject_scenario(config, scenario, business_date))
+    else:
+        typer.echo(
+            "Provide a scenario name or --freeze-fixtures.\n"
+            "Scenarios: null_burst | stale_feed | out_of_range | schema_drift | "
+            "split_2to1 | cross_source_break | volatility_regime | mixed_defects",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+# Scenario → (DefectType value, Bronze-column kwargs)
+_BRONZE_SCENARIOS: dict[str, tuple[str, dict[str, object]]] = {
+    "null_burst":        ("null_burst",         {"column": "Close", "rate": 0.3}),
+    "stale_feed":        ("stale_feed",          {"days_stale": 3}),
+    "out_of_range":      ("out_of_range",        {"column": "Close"}),
+    "schema_drift":      ("schema_drift",        {"drop": ["Adj Close"]}),
+    "split_2to1":        ("unadjusted_split",    {"column": "Close", "ratio": 2.0}),
+    "cross_source_break":("cross_source_break",  {"column": "Close"}),
+    "volatility_regime": ("volatility_regime",   {"column": "Close", "spike_multiplier": 3.0}),
+}
+
+
+async def _inject_scenario(config_path: Path, scenario: str, business_date: date) -> None:
+    """Apply a named defect to each price-source fixture and write default.parquet (FR-T1)."""
+    import numpy as np
+    import pandas as pd
+
+    from harness.fixtures import _FIXTURES_DIR, snapshot
+    from harness.inject import inject as harness_inject
+    from mdq.core.config import load_config
+    from mdq.utils.logging import configure_root, get_logger
+
+    configure_root("INFO")
+    log = get_logger("cli.inject")
+
+    if scenario not in _BRONZE_SCENARIOS and scenario != "mixed_defects":
+        typer.echo(
+            f"[ERROR] Unknown scenario {scenario!r}. "
+            f"Valid: {sorted(list(_BRONZE_SCENARIOS) + ['mixed_defects'])}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    cfg = load_config(config_path)
+
+    for source_id in ("yfinance", "stooq"):
+        # Prefer live-snapshotted clean base; fall back to synthetic generation
+        clean_path = _FIXTURES_DIR / source_id / "clean.parquet"
+        if clean_path.exists():
+            base_df = pd.read_parquet(clean_path)
+            log.info("Loaded clean fixture for %s (%d rows)", source_id, len(base_df))
+        else:
+            base_df = _synthetic_bronze(source_id, cfg, business_date)
+            log.info("Generated synthetic Bronze for %s (%d rows)", source_id, len(base_df))
+
+        if scenario == "mixed_defects":
+            df = harness_inject(base_df, "null_burst", seed=42, column="Close", rate=0.2)
+            df = harness_inject(df, "out_of_range", seed=7, column="Close")
+        else:
+            defect_type, params = _BRONZE_SCENARIOS[scenario]
+            df = harness_inject(base_df, defect_type, seed=42, **params)
+
+        dest = snapshot(source_id, df, tag="default")
+        log.info("Injected %r into %s → %s (%d rows)", scenario, source_id, dest, len(df))
+
+    typer.echo(f"Fixtures ready. Run `python -m mdq run` with use_fixtures=True to observe defects.")
+
+
+async def _freeze_fixtures(config_path: Path, business_date: date) -> None:
+    """Fetch live data from each ingestion agent and snapshot as clean base fixtures (FR-T2)."""
+    from mdq.agents.ingestion.stooq_agent import StooqAgent
+    from mdq.agents.ingestion.yfinance_agent import YFinanceAgent
+    from mdq.core.blackboard import Blackboard
+    from mdq.core.config import load_config
+    from mdq.core.store import MedallionStore
+    from mdq.core.transport.inprocess import InProcessTransport
+    from mdq.utils.logging import configure_root, get_logger
+    from harness.fixtures import snapshot
+
+    configure_root("INFO")
+    log = get_logger("cli.inject.freeze")
+
+    cfg = load_config(config_path)
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        store = MedallionStore(
+            bronze_root=tmp_path / "bronze",
+            silver_root=tmp_path / "silver",
+            gold_root=tmp_path / "gold",
+            quarantine_root=tmp_path / "quarantine",
+            lineage_root=tmp_path / "lineage",
+            duckdb_path=tmp_path / "freeze.duckdb",
+        )
+        store.init_dirs()
+        store.open()
+
+        bb = Blackboard(db_path=":memory:", transport=InProcessTransport())
+
+        for AgentCls, source_id in [
+            (YFinanceAgent, "yfinance"),
+            (StooqAgent, "stooq"),
+        ]:
+            agent = AgentCls(bb=bb, store=store, cfg=cfg)  # type: ignore[operator]
+            try:
+                df = await agent._load(business_date)  # type: ignore[attr-defined]
+            except Exception as exc:
+                log.error("Live fetch failed for %s: %s — skipping", source_id, exc)
+                continue
+            if df.empty:
+                log.warning("No data from %s for %s — skipping fixture", source_id, business_date)
+                continue
+            # Save as both "clean" (backup) and "default" (active)
+            snapshot(source_id, df, tag="clean")
+            snapshot(source_id, df, tag="default")
+            log.info("Snapshotted %s → clean + default (%d rows)", source_id, len(df))
+
+        store.close()
+
+    typer.echo(f"Fixtures frozen for {business_date}. Run `python -m mdq run` with use_fixtures=True.")
+
+
+def _synthetic_bronze(source_id: str, cfg: object, business_date: date) -> "pd.DataFrame":
+    """Generate a deterministic synthetic Bronze DataFrame for *source_id* universe instruments."""
+    from datetime import UTC, datetime
+
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(42)
+    fetch_ts = pd.Timestamp(datetime(business_date.year, business_date.month, business_date.day, 21, 0, 0, tzinfo=UTC))
+    rows = []
+
+    for inst in cfg.universe.instruments:  # type: ignore[union-attr]
+        if source_id not in inst.symbols:
+            continue
+        sym = inst.symbols[source_id]
+        close = round(float(rng.uniform(50.0, 500.0)), 4)
+        rows.append({
+            "Date": pd.Timestamp(business_date),
+            "Open": round(float(close * (1.0 + float(rng.normal(0, 0.005)))), 4),
+            "High": round(float(close * (1.0 + abs(float(rng.normal(0, 0.01))))), 4),
+            "Low":  round(float(close * (1.0 - abs(float(rng.normal(0, 0.01))))), 4),
+            "Close": close,
+            "Adj Close": close,
+            "Volume": int(rng.integers(100_000, 10_000_000)),
+            "instrument_id": inst.instrument_id,
+            "source_symbol": sym,
+            "fetch_ts": fetch_ts,
+        })
+
+    return pd.DataFrame(rows)
