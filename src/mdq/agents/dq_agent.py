@@ -64,6 +64,23 @@ class DQAgent(Agent):
         business_date = date.fromisoformat(event.payload["business_date"])
         run_id = event.run_id
 
+        if event.payload.get("silver_rows") == 0:
+            log.warning("DQ: no Silver rows for %s (empty universe) — publishing DQ_PASSED", source_id)
+            await self._bb.publish(
+                Event(
+                    topic=TopicType.DQ_PASSED,
+                    agent=self.name,
+                    run_id=run_id,
+                    payload={
+                        "source_id": source_id,
+                        "business_date": business_date.isoformat(),
+                        "silver_rows": 0,
+                        "rules_checked": 0,
+                    },
+                )
+            )
+            return
+
         silver_path = self._store.silver_path(run_id, business_date, source_id)
         try:
             silver_df = pd.read_parquet(silver_path)

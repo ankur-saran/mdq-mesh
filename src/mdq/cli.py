@@ -62,6 +62,11 @@ async def _run_pipeline(config_path: Path, business_date: date | None = None) ->
         business_date = date.today() - timedelta(days=1)
 
     cfg = load_config(config_path)
+    if not cfg.universe.instruments:
+        log.warning(
+            "Universe is empty — pipeline will boot and complete with zero data. "
+            "Add instruments to config/universe.yaml to fetch market data."
+        )
     run_id = str(uuid.uuid4())
     log.info("Starting run %s for %s", run_id, business_date)
 

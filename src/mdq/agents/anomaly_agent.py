@@ -55,6 +55,10 @@ class AnomalyAgent(Agent):
         run_id = event.run_id
         cfg = self._cfg.anomaly
 
+        if event.payload.get("silver_rows") == 0:
+            log.warning("ANOMALY: no Silver rows for %s (empty universe) — skipping anomaly check", source_id)
+            return
+
         # Load current-day Silver
         silver_path = self._store.silver_path(run_id, business_date, source_id)
         try:

@@ -76,6 +76,22 @@ class ContractAgent(Agent):
         business_date = date.fromisoformat(event.payload["business_date"])
         run_id = event.run_id
 
+        if event.payload.get("row_count") == 0:
+            log.warning("CONTRACT: no data for %s (empty universe) — skipping Bronze read", source_id)
+            await self._bb.publish(
+                Event(
+                    topic=TopicType.CONTRACT_PASSED,
+                    agent=self.name,
+                    run_id=run_id,
+                    payload={
+                        "source_id": source_id,
+                        "business_date": business_date.isoformat(),
+                        "silver_rows": 0,
+                    },
+                )
+            )
+            return
+
         bronze_path = self._store.bronze_path(source_id, run_id, business_date)
         try:
             bronze_df = pd.read_parquet(bronze_path)

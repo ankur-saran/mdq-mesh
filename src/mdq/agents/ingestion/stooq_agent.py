@@ -84,6 +84,25 @@ class StooqAgent(Agent):
             )
             return
 
+        if df.empty:
+            log.warning(
+                "stooq: no instruments configured — publishing INGESTION_COMPLETE "
+                "with row_count=0 (universe is empty)"
+            )
+            await self._bb.publish(
+                Event(
+                    topic=TopicType.INGESTION_COMPLETE,
+                    agent=self.name,
+                    run_id=run_id,
+                    payload={
+                        "source_id": _SOURCE_ID,
+                        "business_date": business_date.isoformat(),
+                        "row_count": 0,
+                    },
+                )
+            )
+            return
+
         dest = self._store.write_bronze(_SOURCE_ID, run_id, df, business_date)
         log.info("Bronze written: %s (%d rows)", dest, len(df))
         await self._bb.publish(
@@ -141,6 +160,9 @@ class StooqAgent(Agent):
             from harness.fixtures import load_fixture
 
             return load_fixture(_SOURCE_ID)
+
+        if not self._symbol_map:
+            return pd.DataFrame()
 
         symbols = list(self._symbol_map.keys())
         src_cfg = self._cfg.sources.stooq

@@ -93,6 +93,25 @@ class ECBAgent(Agent):
             )
             return
 
+        if df.empty:
+            log.warning(
+                "ecb: no FX instruments configured — publishing REFERENCE_DATA_COMPLETE "
+                "with row_count=0 (universe is empty)"
+            )
+            await self._bb.publish(
+                Event(
+                    topic=TopicType.REFERENCE_DATA_COMPLETE,
+                    agent=self.name,
+                    run_id=run_id,
+                    payload={
+                        "source_id": _SOURCE_ID,
+                        "business_date": business_date.isoformat(),
+                        "row_count": 0,
+                    },
+                )
+            )
+            return
+
         dest = self._store.write_bronze(_SOURCE_ID, run_id, df, business_date)
         log.info("ECB Bronze written: %s (%d rows)", dest, len(df))
 
@@ -119,6 +138,9 @@ class ECBAgent(Agent):
             from harness.fixtures import load_fixture
 
             return load_fixture(_SOURCE_ID)
+
+        if not self._symbol_map:
+            return pd.DataFrame()
 
         currencies = list(self._symbol_map.keys())
         src_cfg = self._cfg.sources.ecb
